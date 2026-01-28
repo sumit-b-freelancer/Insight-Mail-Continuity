@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Insight Mail Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+    <style>
+        body { background-color: #f4f6f9; }
+        .navbar-custom { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        
+        /* Risk Indicators */
+        .risk-high { border-left: 5px solid #dc3545; background-color: #fff5f5; }
+        .risk-med { border-left: 5px solid #ffc107; background-color: #fffbf0; }
+        .risk-low { border-left: 5px solid #198754; background-color: #f0fff4; }
+        
+        .btn-primary-custom { background-color: #764ba2; color: white; border: none; }
+        .btn-primary-custom:hover { background-color: #5b3a7d; color: white; }
+        
+        /* Table Styling */
+        .table-hover tbody tr:hover { background-color: rgba(0,0,0,0.02); cursor: pointer; }
+        .accordion-toggle { cursor: pointer; }
+        
+        /* Analysis Card Styles */
+        .ai-card { border: none; background-color: white; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .ai-header { background: linear-gradient(to right, #f8f9fa, #ffffff); border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4 shadow-sm">
+  <div class="container">
+    <a class="navbar-brand fw-bold" href="#">Insight Mail</a>
+    <div class="navbar-nav ms-auto">
+        <span class="nav-item nav-link text-white me-3">Hello, {{ request.user.first_name|default:request.user.username }}</span>
+        <a class="btn btn-light btn-sm text-primary fw-bold" href="{% url 'logout' %}">Logout</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <a href="{% url 'dashboard' %}" class="btn {% if box_type == 'Inbox' %}btn-primary-custom{% else %}btn-white text-muted border bg-white{% endif %} shadow-sm me-2">Inbox</a>
+            <a href="{% url 'sent_box' %}" class="btn {% if box_type == 'Sent' %}btn-primary-custom{% else %}btn-white text-muted border bg-white{% endif %} shadow-sm">Sent Items</a>
+        </div>
+        
+        <div class="d-flex gap-2">
+            <form method="post" action="{% url 'sync_gmail' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-warning text-dark fw-bold shadow-sm">
+                    <i class="bi bi-arrow-repeat"></i> Sync Gmail
+                </button>
+            </form>
+            <a href="{% url 'compose_email' %}" class="btn btn-success shadow-sm">
+                <i class="bi bi-pencil-fill"></i> New Message
+            </a>
+        </div>
+    </div>
+
+    <h4 class="text-secondary mb-3">{{ box_type }}</h4>
+
+    <div class="card border-0 shadow-sm overflow-hidden">
+        <table class="table mb-0" style="border-collapse: collapse;">
+            <thead class="bg-light">
+                <tr>
+                    <th class="py-3 ps-4" style="width: 5%;"></th> <th class="py-3" style="width: 40%;">Subject</th>
+                    <th class="py-3" style="width: 25%;">{% if box_type == 'Inbox' %}From{% else %}To{% endif %}</th>
+                    <th class="py-3" style="width: 15%;">Risk Score</th>
+                    <th class="py-3 text-end pe-4" style="width: 15%;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for email in emails %}
+                <tr class="accordion-toggle align-middle 
+                    {% if email.analysis.risk_score > 70 %}risk-high
+                    {% elif email.analysis.risk_score > 50 %}risk-med
+                    {% elif email.is_analyzed %}risk-low{% endif %}" 
+                    data-bs-toggle="collapse" 
+                    data-bs-target="#analysis{{ email.id }}">
+                    
+                    <td class="ps-4 text-secondary"><i class="bi bi-chevron-down"></i></td>
+                    
+                    <td>
+                        {% if not email.is_read and box_type == 'Inbox' %}
+                            <span class="text-primary me-1">●</span>
+                        {% endif %}
+                        <span class="fw-bold text-dark">{{ email.subject }}</span>
+                    </td>
+                    
+                    <td>
+                        {% if box_type == 'Inbox' %}
+                            {{ email.sender.first_name }} {{ email.sender.last_name }}
+                        {% else %}
+                            {{ email.recipient.first_name }} {{ email.recipient.last_name }}
+                        {% endif %}
+                    </td>
+                    
+                    <td>
+                        {% if email.is_analyzed %}
+                            {% if email.analysis.risk_score > 70 %}
+                                <span class="badge bg-danger rounded-pill px-3">{{ email.analysis.risk_score }} / 100</span>
+                            {% elif email.analysis.risk_score > 50 %}
+                                <span class="badge bg-warning text-dark rounded-pill px-3">{{ email.analysis.risk_score }} / 100</span>
+                            {% else %}
+                                <span class="badge bg-success rounded-pill px-3">{{ email.analysis.risk_score }} / 100</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="badge bg-secondary rounded-pill px-3">Pending</span>
+                        {% endif %}
+                    </td>
+                    
+                    <td class="text-end pe-4">
+                         <button class="btn btn-sm btn-outline-secondary rounded-pill">View Details</button>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td colspan="5" class="p-0 border-0">
+                        <div id="analysis{{ email.id }}" class="collapse bg-light">
+                            <div class="p-4">
+                                {% if email.is_analyzed %}
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="card h-100 border-0 shadow-sm">
+                                            <div class="card-body">
+                                                <small class="text-muted text-uppercase fw-bold">Original Message</small>
+                                                <p class="mt-2 text-secondary small" style="white-space: pre-wrap;">{{ email.body|truncatechars:300 }}</p>
+                                                <a href="{% url 'email_detail' email.id %}" class="btn btn-link btn-sm p-0">Open Full Email &rarr;</a>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-8">
+                                        <div class="ai-card p-3">
+                                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                                <h6 class="mb-0 text-primary"><i class="bi bi-robot"></i> AI Analysis</h6>
+                                                <span class="badge bg-light text-dark border">{{ email.analysis.sentiment }}</span>
+                                            </div>
+                                            
+                                            <div class="row mb-3 g-2">
+                                                <div class="col-4">
+                                                    <div class="p-2 bg-light rounded text-center border">
+                                                        <small class="text-muted d-block" style="font-size: 0.7rem;">RISK</small>
+                                                        <strong class="{% if email.analysis.risk_score > 50 %}text-danger{% else %}text-success{% endif %}">
+                                                            {{ email.analysis.risk_score }}
+                                                        </strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="p-2 bg-light rounded text-center border">
+                                                        <small class="text-muted d-block" style="font-size: 0.7rem;">TONE</small>
+                                                        <strong>{{ email.analysis.tone }}</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="col-4">
+                                                    <div class="p-2 bg-light rounded text-center border">
+                                                        <small class="text-muted d-block" style="font-size: 0.7rem;">INTENT</small>
+                                                        <strong>{{ email.analysis.suggested_category }}</strong>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="alert alert-light border-start border-4 border-primary py-2 small">
+                                                {{ email.analysis.summary }}
+                                            </div>
+
+                                            <div class="mt-3 d-flex gap-2">
+                                                {% if box_type == 'Inbox' %}
+                                                    <a href="{% url 'compose_email' %}?to={{ email.sender.username }}&subject=Re: {{ email.subject }}" class="btn btn-success btn-sm px-3">
+                                                        <i class="bi bi-reply-fill"></i> Reply with AI Draft
+                                                    </a>
+                                                {% endif %}
+                                                <a href="{% url 'email_detail' email.id %}" class="btn btn-outline-primary btn-sm">Full Report</a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                    <div class="text-center py-3 text-muted">
+                                        Analysis is pending. Please wait or click 'Sync Gmail'.
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="5" class="text-center py-5 text-muted">No emails found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+</body>
+</html>
