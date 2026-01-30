@@ -12,6 +12,8 @@ class Email(models.Model):
     
     is_analyzed = models.BooleanField(default=False)
     is_read = models.BooleanField(default=False)
+    priority_score = models.FloatField(default=0.0) # The raw AI score (0.0 to 1.0)
+    classification = models.CharField(max_length=20, default="Unclassified") # The human label
     
     def __str__(self):
         return f"{self.sender} -> {self.recipient}: {self.subject}"
@@ -26,4 +28,5 @@ class AnalysisResult(models.Model):
     suggested_category = models.CharField(max_length=50, default="inquiry")
     suggested_reply = models.TextField(blank=True)
     
+
     created_at = models.DateTimeField(auto_now_add=True)
